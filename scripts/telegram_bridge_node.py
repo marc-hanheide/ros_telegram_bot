@@ -6,32 +6,18 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import rospy
 from std_msgs.msg import String
 from telegram_bridge.srv import TelegramTextUpdate
-
+from telegram_bridge.srv import TelegramCommand
+from rosservice import rosservice_find
+from cv_bridge import CvBridge
+import cv2
+from io import BytesIO
 
 class TelegramBridge:
-    def start(self, bot, update):
-        update.message.reply_text('Hi!')
-
-    def help(self, bot, update):
-        update.message.reply_text('Help!')
-
-    def echo(self, bot, update):
-        self.text_put.publish(update.message.text)
-
-        try:
-            answer = self.text_service_proxy.call(update.message.text)
-            rospy.loginfo('%s => %s' % (update.message.text, answer.response))
-            update.message.reply_text(answer.response)
-        except Exception as e:
-            update.message.reply_text('error occured when you said "%s": %s' %
-                                      (update.message.text, str(e)))
-
-    def error(self, bot, update, error):
-        rospy.logwarn('Update "%s" caused error "%s"' % (update, error))
-
     def __init__(self):
         # Create the EventHandler and pass it your bot's token.
         self.updater = Updater("274757559:AAFXxuy1jQxgd8PQi3_QngVKV6RCb-0kR6g")
+        self.service_map = {}
+        self.bridge = CvBridge()
 
         # Get the dispatcher to register handlers
         dp = self.updater.dispatcher
@@ -49,6 +35,75 @@ class TelegramBridge:
         self.text_put = rospy.Publisher('~text_msg', String)
         self.text_service_proxy = rospy.ServiceProxy('~text_srv',
                                                      TelegramTextUpdate)
+
+    def start(self, bot, update):
+        update.message.reply_text('Hi!')
+        self.discover_services()
+
+    def dispatch_command(self, bot, update, user_data, cmd, service):
+        rospy.loginfo("commands %s requested, calling service %s" %
+                      (cmd, service))
+        rospy.loginfo("user_data: %s" %
+                      user_data)
+
+        proxy = rospy.ServiceProxy(service, TelegramCommand)
+        try:
+            answer = proxy.call(update.message.text, '')
+            rospy.loginfo('%s => %s' % (update.message.text, answer.response))
+            update.message.reply_text(answer.response)
+            img = self.bridge.imgmsg_to_cv2(answer.image,
+                                            desired_encoding='passthrough')
+            f = BytesIO(cv2.imencode('.png', img)[1].tostring())
+
+            #if answer.image.width > 0:
+
+            update.message.reply_photo(photo=f)
+            user_data['last_answer'] = answer.response
+        except Exception as e:
+            rospy.logerr(e)
+            update.message.reply_text('error occured when you said "%s": %s' %
+                                      (update.message.text, str(e)))
+
+    def help(self, bot, update):
+        update.message.reply_text('Help!')
+
+    def discover_services(self):
+        services = rosservice_find('telegram_bridge/TelegramCommand')
+        rospy.loginfo('services found: %s' % str(services))
+        dp = self.updater.dispatcher
+        for s in services:
+            cmd_name = s.split('/')[-1]
+            if cmd_name not in self.service_map:
+                dp.add_handler(CommandHandler(cmd_name,
+                                              lambda bot,
+                                              update,
+                                              user_data,
+                                              cmd=cmd_name,
+                                              service=s:
+                                              self.dispatch_command(bot,
+                                                                    update,
+                                                                    user_data,
+                                                                    cmd,
+                                                                    service),
+                                              pass_user_data=True))
+                rospy.loginfo('add handler for "%s" command: %s' %
+                              (cmd_name, s))
+
+            self.service_map[cmd_name] = s
+
+    def echo(self, bot, update):
+        self.text_put.publish(update.message.text)
+
+        try:
+            answer = self.text_service_proxy.call(update.message.text)
+            rospy.loginfo('%s => %s' % (update.message.text, answer.response))
+            update.message.reply_text(answer.response)
+        except Exception as e:
+            update.message.reply_text('error occured when you said "%s": %s' %
+                                      (update.message.text, str(e)))
+
+    def error(self, bot, update, error):
+        rospy.logwarn('Update "%s" caused error "%s"' % (update, error))
 
     def spin(self):
         # Start the Bot

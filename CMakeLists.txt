@@ -9,6 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
   std_srvs
+  sensor_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -55,6 +56,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_service_files(
   FILES
   TelegramTextUpdate.srv
+  TelegramCommand.srv
 )
 
 ## Generate actions in the 'action' folder
@@ -68,6 +70,7 @@ add_service_files(
 generate_messages(
   DEPENDENCIES
   std_msgs
+  sensor_msgs
 )
 
 ################################################
