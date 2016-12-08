@@ -3,6 +3,7 @@
 #
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram import ParseMode
 import rospy
 from std_msgs.msg import String
 from telegram_bridge.srv import TelegramTextUpdate
@@ -38,7 +39,7 @@ class TelegramBridge:
 
     def start(self, bot, update):
         update.message.reply_text('Hi!')
-        self.discover_services()
+        self.help(bot, update)
 
     def dispatch_command(self, bot, update, user_data, cmd, service):
         rospy.loginfo("commands %s requested, calling service %s" %
@@ -50,14 +51,16 @@ class TelegramBridge:
         try:
             answer = proxy.call(update.message.text, '')
             rospy.loginfo('%s => %s' % (update.message.text, answer.response))
-            update.message.reply_text(answer.response)
-            img = self.bridge.imgmsg_to_cv2(answer.image,
-                                            desired_encoding='passthrough')
-            f = BytesIO(cv2.imencode('.png', img)[1].tostring())
+            if answer.response is not '':
+                update.message.reply_text(answer.response)
+            if answer.image.width > 0:
+                img = self.bridge.imgmsg_to_cv2(answer.image,
+                                                desired_encoding='passthrough')
+                f = BytesIO(cv2.imencode('.png', img)[1].tostring())
+                update.message.reply_photo(photo=f)
+            if answer.json is not '':
+                update.message.reply_text('<pre>'+answer.json+'</pre>', parse_mode=ParseMode.HTML)
 
-            #if answer.image.width > 0:
-
-            update.message.reply_photo(photo=f)
             user_data['last_answer'] = answer.response
         except Exception as e:
             rospy.logerr(e)
@@ -65,7 +68,12 @@ class TelegramBridge:
                                       (update.message.text, str(e)))
 
     def help(self, bot, update):
-        update.message.reply_text('Help!')
+        self.discover_services()
+
+        sv = ['/'+s for s in self.service_map.keys()]
+
+        srv_str = '\n'.join(sv)
+        update.message.reply_text('Known commands are: \n%s' % srv_str)
 
     def discover_services(self):
         services = rosservice_find('telegram_bridge/TelegramCommand')
