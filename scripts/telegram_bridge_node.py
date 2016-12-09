@@ -99,17 +99,29 @@ class TelegramBridge:
             rospy.loginfo('currently active chats: %s' % pformat(self.chats))
 
     def topic_callback(self, msg, topic, bot, chat_id):
-        rospy.loginfo('received update on topic %s', topic)
-        rospy.loginfo(pformat(msg))
-        bot.send_message(chat_id,
-                         'I have some update for you from topic '
-                         '"<code>%s</code>":'
-                         '<pre>%s</pre>' % (topic, pformat(msg)),
-                         parse_mode=ParseMode.HTML)
+        rospy.loginfo('received update on topic %s (type: %s)' %
+                      (topic, msg._type))
+        if msg._type == "sensor_msgs/Image":
+            img = self.bridge.imgmsg_to_cv2(msg,
+                                            desired_encoding='passthrough')
+            f = BytesIO(cv2.imencode('.png', img)[1].tostring())
+            bot.send_message(chat_id,
+                             'I have this image for you from topic '
+                             '"<code>%s</code>":' % topic,
+                             parse_mode=ParseMode.HTML)
+            bot.send_photo(chat_id, photo=f)
+        else:
+            rospy.loginfo(pformat(msg))
+            bot.send_message(chat_id,
+                             'I have some update for you from topic '
+                             '"<code>%s</code>":'
+                             '<pre>%s</pre>' % (topic, pformat(msg)),
+                             parse_mode=ParseMode.HTML)
 
     def register_topics(self, bot, chat_id):
         default_topics = ' '.join([
-            '/notification'
+            '/notification',
+            '/notification_image'
             ])
         topics = rospy.get_param('~subscribed_topics',
                                  default_topics).split(' ')
@@ -139,6 +151,9 @@ class TelegramBridge:
                 rospy.logwarn("couldn't subscribe to topic %s" % t)
 
     def dispatch_command(self, bot, update, user_data, cmd, service):
+        if not self.check_allowed(bot, update):
+            return
+
         rospy.loginfo("commands %s requested, calling service %s" %
                       (cmd, service))
         rospy.loginfo("user_data: %s" %
@@ -167,6 +182,8 @@ class TelegramBridge:
 
     def help(self, bot, update):
         # self.discover_services()
+        if not self.check_allowed(bot, update):
+            return
 
         sv = ['/'+s for s in self.service_map.keys()]
 
@@ -207,6 +224,8 @@ class TelegramBridge:
             self.service_map[cmd_name] = s
 
     def echo(self, bot, update):
+        if not self.check_allowed(bot, update):
+            return
         self.text_put.publish(update.message.text)
 
         # try:
