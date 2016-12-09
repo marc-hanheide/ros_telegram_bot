@@ -209,13 +209,13 @@ class TelegramBridge:
     def echo(self, bot, update):
         self.text_put.publish(update.message.text)
 
-        try:
-            answer = self.text_service_proxy.call(update.message.text)
-            rospy.loginfo('%s => %s' % (update.message.text, answer.response))
-            update.message.reply_text(answer.response)
-        except Exception as e:
-            update.message.reply_text('error occured when you said "%s": %s' %
-                                      (update.message.text, str(e)))
+        # try:
+        #     answer = self.text_service_proxy.call(update.message.text)
+        #     rospy.loginfo('%s => %s' % (update.message.text, answer.response))
+        #     update.message.reply_text(answer.response)
+        # except Exception as e:
+        #     update.message.reply_text('error occured when you said "%s": %s' %
+        #                               (update.message.text, str(e)))
 
     def error(self, bot, update, error):
         rospy.logwarn('Update "%s" caused error "%s"' % (update, error))
