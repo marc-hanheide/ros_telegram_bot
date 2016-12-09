@@ -36,6 +36,7 @@ class TelegramBridge:
         self.text_put = rospy.Publisher('~text_msg', String)
         self.text_service_proxy = rospy.ServiceProxy('~text_srv',
                                                      TelegramTextUpdate)
+        self.discover_services()
 
     def start(self, bot, update):
         update.message.reply_text('Hi!')
@@ -68,7 +69,7 @@ class TelegramBridge:
                                       (update.message.text, str(e)))
 
     def help(self, bot, update):
-        self.discover_services()
+        # self.discover_services()
 
         sv = ['/'+s for s in self.service_map.keys()]
 
@@ -76,7 +77,10 @@ class TelegramBridge:
         update.message.reply_text('Known commands are: \n%s' % srv_str)
 
     def discover_services(self):
-        services = rosservice_find('telegram_bridge/TelegramCommand')
+        rospy.loginfo('looking for services')
+        # services = rosservice_find('telegram_bridge/TelegramCommand')
+        #TEMP HACK:
+	services = ['/aaf_telegram_service/battery','/aaf_telegram_service/look','/aaf_telegram_service/where']
         rospy.loginfo('services found: %s' % str(services))
         dp = self.updater.dispatcher
         for s in services:
