@@ -32,8 +32,9 @@ class AAFService:
         self.notification = rospy.Publisher('/notification', String,
                                             queue_size=10)
 
-        self.rosfilter = rospy.Subscriber('/rosout_filtered', Log,
-                                          self.notify_rosout, queue_size=10)
+        # disabled for now
+        # self.rosfilter = rospy.Subscriber('/rosout_filtered', Log,
+        #                                   self.notify_rosout, queue_size=10)
 
         self.last_rosout = 0
 
