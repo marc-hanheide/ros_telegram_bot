@@ -9,6 +9,7 @@ from scitos_msgs.msg import BatteryState
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from pprint import pformat
+from rosgraph_msgs.msg import Log
 
 
 
@@ -28,6 +29,26 @@ class AAFService:
         self.text_service = rospy.Service('/telegram_bridge/text_srv',
                                           TelegramTextUpdate,
                                           self.echo)
+        self.notification = rospy.Publisher('/notification', String,
+                                            queue_size=10)
+
+        self.rosfilter = rospy.Subscriber('/rosout_filtered', Log,
+                                          self.notify_rosout, queue_size=10)
+
+        self.last_rosout = 0
+
+        self.max_rosout_freqency = 300
+
+    def notify_rosout(self, msg):
+        if msg.header.stamp.secs - self.last_rosout < self.max_rosout_freqency:
+            rospy.logwarn('too frequent updates on rosout, skipping '
+                          'for %d seconds.', self.max_rosout_freqency)
+            return
+        else:
+            log = pformat(msg)
+            rospy.loginfo('update on rosout: %s' % log)
+            self.notification.publish('New relevant information on rosout:'
+                                      '\n%s' % log)
 
     def look(self, question):
         json = ''
