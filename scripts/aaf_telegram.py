@@ -45,10 +45,12 @@ class AAFService:
                           'for %d seconds.', self.max_rosout_freqency)
             return
         else:
-            log = pformat(msg)
-            rospy.loginfo('update on rosout: %s' % log)
-            self.notification.publish('New relevant information on rosout:'
-                                      '\n%s' % log)
+            if msg.level >= Log.ERROR:
+                log = pformat(msg)
+                rospy.loginfo('update on rosout: %s' % log)
+                self.notification.publish('New relevant information on rosout:'
+                                          '\n%s' % log)
+                self.last_rosout = msg.header.stamp.secs
 
     def look(self, question):
         json = ''
