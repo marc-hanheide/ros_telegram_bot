@@ -3,7 +3,7 @@
 #
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-from telegram import ParseMode
+from telegram import ParseMode, Chat
 import rospy
 from std_msgs.msg import String
 from telegram_bridge.srv import TelegramTextUpdate
@@ -12,12 +12,22 @@ from rosservice import rosservice_find
 from cv_bridge import CvBridge
 import cv2
 from io import BytesIO
+from mongodb_store.message_store import MessageStoreProxy
+from rostopic import get_topic_class
+from pprint import pformat
 
 class TelegramBridge:
     def __init__(self):
         # Create the EventHandler and pass it your bot's token.
-        self.updater = Updater("274757559:AAFXxuy1jQxgd8PQi3_QngVKV6RCb-0kR6g")
+        self.updater = Updater(
+            rospy.get_param('~token',
+                            '283082068:AAG_68rJlZAX9ny6lZoO4YlIbN0mKBpUSiY')
+            )
         self.service_map = {}
+
+        # self.chats_ms = MessageStoreProxy(database="ros_telegram",
+        #                                   collection="chats")
+
         self.bridge = CvBridge()
 
         # Get the dispatcher to register handlers
@@ -33,14 +43,100 @@ class TelegramBridge:
         # log all errors
         dp.add_error_handler(self.error)
 
-        self.text_put = rospy.Publisher('~text_msg', String)
+        self.text_put = rospy.Publisher('~text_msg', String, queue_size=10)
         self.text_service_proxy = rospy.ServiceProxy('~text_srv',
                                                      TelegramTextUpdate)
         self.discover_services()
+        self.users = [int(u)
+                      for u in rospy.get_param('~users',
+                                               '325388792 209662680'
+                                               ).split(' ')]
+        self.subscriptions = {}
+        self.chats = set([])
+
+    def check_allowed(self, bot, update):
+        if bot.get_chat(update.message.chat_id).type is Chat.GROUP:
+            admins = self.get_admin_ids(bot, update.message.chat_id)
+            if update.message.from_user.id in admins:
+                return True
+        else:
+            if update.message.from_user.id in self.users:
+                return True
+        # error handling:
+        update.message.reply_text("Sorry, I won't talk to "
+                                  "you as I don't know you personally.")
+        rospy.logwarn('unknown user %s tried to log in: %s %s %d' %
+                      (
+                        update.message.from_user.username,
+                        update.message.from_user.first_name,
+                        update.message.from_user.last_name,
+                        update.message.from_user.id
+                      )
+                      )
+        return False
+
+    def get_admin_ids(self, bot, chat_id):
+        """Returns a list of admin IDs for a given chat."""
+        return [admin.user.id for admin in bot.getChatAdministrators(chat_id)]
 
     def start(self, bot, update):
-        update.message.reply_text('Hi!')
-        self.help(bot, update)
+        update.message.reply_text('Hi %s!'
+                                  ' You are talking to an actual robot.' %
+                                  update.message.from_user.first_name)
+        if self.check_allowed(bot, update):
+            rospy.loginfo('new user %s logged in: %s %s %d' %
+                          (
+                            update.message.from_user.username,
+                            update.message.from_user.first_name,
+                            update.message.from_user.last_name,
+                            update.message.from_user.id
+                          )
+                          )
+            self.register_topics(bot, update.message.chat_id)
+            # update.message.reply_text('registered topics')
+            self.help(bot, update)
+            self.chats.add(update.message.chat_id)
+            rospy.loginfo('currently active chats: %s' % pformat(self.chats))
+
+    def topic_callback(self, msg, topic, bot, chat_id):
+        rospy.loginfo('received update on topic %s', topic)
+        rospy.loginfo(pformat(msg))
+        bot.send_message(chat_id,
+                         'I have some update for you from topic '
+                         '"<code>%s</code>":'
+                         '<pre>%s</pre>' % (topic, pformat(msg)),
+                         parse_mode=ParseMode.HTML)
+
+    def register_topics(self, bot, chat_id):
+        default_topics = ' '.join([
+            '/notification'
+            ])
+        topics = rospy.get_param('~subscribed_topics',
+                                 default_topics).split(' ')
+        for t in topics:
+            try:
+                msg_class, _, _ = get_topic_class(t)
+                if msg_class is not None:
+                    if chat_id not in self.subscriptions:
+                        self.subscriptions[chat_id] = {}
+                    if t not in self.subscriptions[chat_id]:
+                        s = rospy.Subscriber(t, msg_class,
+                                             lambda msg, topic=t, bot=bot,
+                                             chat_id=chat_id:
+                                             self.topic_callback(msg,
+                                                                 topic, bot,
+                                                                 chat_id),
+                                             queue_size=1)
+                        self.subscriptions[chat_id][t] = s
+                        rospy.loginfo('register subscriber for topic'
+                                      ' %s with type %s' %
+                                      (t, str(msg_class)))
+                else:
+                    rospy.logwarn("couldn't determine type of topic '%s'."
+                                  " So not subscribing to it." % t)
+
+            except:
+                rospy.logwarn("couldn't subscribe to topic %s" % t)
 
     def dispatch_command(self, bot, update, user_data, cmd, service):
         rospy.loginfo("commands %s requested, calling service %s" %
@@ -60,7 +156,8 @@ class TelegramBridge:
                 f = BytesIO(cv2.imencode('.png', img)[1].tostring())
                 update.message.reply_photo(photo=f)
             if answer.json is not '':
-                update.message.reply_text('<pre>'+answer.json+'</pre>', parse_mode=ParseMode.HTML)
+                update.message.reply_text('<pre>'+answer.json+'</pre>',
+                                          parse_mode=ParseMode.HTML)
 
             user_data['last_answer'] = answer.response
         except Exception as e:
@@ -79,8 +176,13 @@ class TelegramBridge:
     def discover_services(self):
         rospy.loginfo('looking for services')
         # services = rosservice_find('telegram_bridge/TelegramCommand')
-        #TEMP HACK:
-	services = ['/aaf_telegram_service/battery','/aaf_telegram_service/look','/aaf_telegram_service/where']
+        # TEMP HACK:
+        default_services = ' '.join([
+            '/aaf_telegram_service/battery',
+            '/aaf_telegram_service/look',
+            '/aaf_telegram_service/where'
+            ])
+        services = rospy.get_param('~services', default_services).split(' ')
         rospy.loginfo('services found: %s' % str(services))
         dp = self.updater.dispatcher
         for s in services:
