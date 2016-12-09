@@ -10,8 +10,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from pprint import pformat
 from rosgraph_msgs.msg import Log
-
-
+from strands_executive_msgs.msg import ExecutionStatus
 
 
 class AAFService:
@@ -25,6 +24,9 @@ class AAFService:
         self.text_service = rospy.Service('~where',
                                           TelegramCommand,
                                           self.closest_node)
+        self.text_service = rospy.Service('~schedule',
+                                          TelegramCommand,
+                                          self.schedule)
 
         self.text_service = rospy.Service('/telegram_bridge/text_srv',
                                           TelegramTextUpdate,
@@ -52,6 +54,20 @@ class AAFService:
                 self.notification.publish('New relevant information on rosout:'
                                           '\n%s' % log)
                 self.last_rosout = msg.header.stamp.secs
+
+    def schedule(self, question):
+        image = None
+        try:
+            state = rospy.wait_for_message('/current_schedule',
+                                           ExecutionStatus,
+                                           timeout=5)
+            response = "current schedule:"
+            json = pformat(state)
+        except Exception as e:
+            json = pformat(e)
+            response = "Sorry, I waited 5 seconds and still" \
+                       "didn't get the current schedule."
+        return [response, json, image]
 
     def look(self, question):
         json = ''

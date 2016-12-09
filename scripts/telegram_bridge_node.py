@@ -180,6 +180,7 @@ class TelegramBridge:
         default_services = ' '.join([
             '/aaf_telegram_service/battery',
             '/aaf_telegram_service/look',
+            '/aaf_telegram_service/schedule',
             '/aaf_telegram_service/where'
             ])
         services = rospy.get_param('~services', default_services).split(' ')
