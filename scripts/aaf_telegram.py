@@ -74,11 +74,11 @@ class AAFService:
         try:
             image = rospy.wait_for_message('/head_xtion/rgb/image_color',
                                            Image,
-                                           timeout=5)
+                                           timeout=10)
             response = "This is what the world looks right now"
         except:
             image = None
-            response = "Sorry, I waited 5 seconds and still didn't get a live image."
+            response = "Sorry, I waited 10 seconds and still didn't get a live image."
         return [response, json, image]
 
     def battery(self, question):
