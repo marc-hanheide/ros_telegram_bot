@@ -103,7 +103,7 @@ class TelegramBridge:
                       (topic, msg._type))
         if msg._type == "sensor_msgs/Image":
             img = self.bridge.imgmsg_to_cv2(msg,
-                                            desired_encoding='passthrough')
+                                            desired_encoding='bgr8')
             f = BytesIO(cv2.imencode('.png', img)[1].tostring())
             bot.send_message(chat_id,
                              'I have this image for you from topic '
@@ -167,7 +167,7 @@ class TelegramBridge:
                 update.message.reply_text(answer.response)
             if answer.image.width > 0:
                 img = self.bridge.imgmsg_to_cv2(answer.image,
-                                                desired_encoding='passthrough')
+                                                desired_encoding='bgr8')
                 f = BytesIO(cv2.imencode('.png', img)[1].tostring())
                 update.message.reply_photo(photo=f)
             if answer.json is not '':
