@@ -49,7 +49,7 @@ class TelegramBridge:
         self.discover_services()
         self.users = [int(u)
                       for u in rospy.get_param('~users',
-                                               '325388792 209662680'
+                                               '325388792 209662680 276878400 286948887'
                                                ).split(' ')]
         self.subscriptions = {}
         self.chats = set([])
