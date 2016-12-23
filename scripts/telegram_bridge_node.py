@@ -15,6 +15,7 @@ from io import BytesIO
 from mongodb_store.message_store import MessageStoreProxy
 from rostopic import get_topic_class
 from pprint import pformat
+from os import system
 
 class TelegramBridge:
     def __init__(self):
@@ -35,6 +36,7 @@ class TelegramBridge:
 
         # on different commands - answer in Telegram
         dp.add_handler(CommandHandler("start", self.start))
+        dp.add_handler(CommandHandler("ping", self.ping))
         dp.add_handler(CommandHandler("help", self.help))
 
         # on noncommand i.e message - echo the message on Telegram
@@ -53,6 +55,18 @@ class TelegramBridge:
                                                ).split(' ')]
         self.subscriptions = {}
         self.chats = set([])
+
+    def ping(self, but, update):
+	try:
+	    host = update.message.text.split(' ')[1]
+        except:
+            host = '127.0.0.1'
+        if system("ping -c 1 -w2 "+host) == 0:
+            update.message.reply_text(u'\U0001f600 successfully ping-ed %s. All good!' %
+                                      host)
+        else:
+            rospy.loginfo('ping failed for %s' % host)
+            update.message.reply_text(u'\U0001f4a9 tried to ping %s but didn\'t get a response in time.' % host)
 
     def check_allowed(self, bot, update):
         if bot.get_chat(update.message.chat_id).type is Chat.GROUP:
@@ -120,6 +134,7 @@ class TelegramBridge:
 
     def register_topics(self, bot, chat_id):
         default_topics = ' '.join([
+            '/speak/goal',
             '/notification',
             '/notification_image'
             ])
@@ -186,6 +201,9 @@ class TelegramBridge:
             return
 
         sv = ['/'+s for s in self.service_map.keys()]
+	sv.append('/ping <ip address>')
+	sv.append('/start')
+	sv.append('/help')
 
         srv_str = '\n'.join(sv)
         update.message.reply_text('Known commands are: \n%s' % srv_str)
